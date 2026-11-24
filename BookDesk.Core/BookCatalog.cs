@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace BookDesk.Core;
 
 public class BookCatalog
@@ -8,12 +10,22 @@ public class BookCatalog
 
     public string? TryAdd(Book book, string priceText)
     {
+        Debug.WriteLine("TryAdd: начало добавления книги");
+        Debug.WriteLine($"TryAdd: title='{book.Title}', copies={book.Copies}");
+        Trace.WriteLine($"Trace TryAdd: priceText='{priceText}'");
+
         var errors = BookValidator.Validate(book, priceText);
         if (errors.Count > 0)
+        {
+            Debug.WriteLine($"TryAdd: валидация не прошла ({errors.Count})");
             return string.Join(" ", errors);
+        }
 
         book.RecalcTotal();
+        Debug.Assert(book.Total >= 0, "Итоговая стоимость не должна быть отрицательной");
+        Debug.WriteLine($"TryAdd: итог={book.Total}, книг до добавления={_items.Count}");
         _items.Add(book);
+        Debug.WriteLine("TryAdd: книга добавлена");
         return null;
     }
 
@@ -32,7 +44,7 @@ public class BookCatalog
     }
 
     /// <summary>
-    /// Удаление. BUG-03 в дефектной версии: при selected == null удаляется первая запись.
+    /// Удаление. BUG-03: при selected == null раньше удалялась первая запись.
     /// </summary>
     public string? TryDelete(Book? selected)
     {
@@ -57,7 +69,7 @@ public class BookCatalog
     }
 
     /// <summary>
-    /// Поиск по названию. BUG-04 в дефектной версии: сравнение с учётом регистра.
+    /// Поиск по названию. BUG-04: раньше сравнение шло с учётом регистра.
     /// </summary>
     public IReadOnlyList<Book> Search(string? query)
     {

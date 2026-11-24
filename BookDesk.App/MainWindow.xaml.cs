@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using BookDesk.Core;
@@ -13,15 +14,18 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        ModeLabel.Text = DefectMode.Enabled
-            ? "Режим: дефектная учебная версия (DefectMode=ON)"
-            : "Режим: исправленная версия (DefectMode=OFF)";
-
-        _catalog.SeedDemo();
-        RefreshView(_catalog.Items);
-        BooksGrid.ItemsSource = _view;
-        SearchBox.Text = string.Empty;
-        SearchBox.ToolTip = "Поиск по названию";
+        try
+        {
+            _catalog.SeedDemo();
+            RefreshView(_catalog.Items);
+            BooksGrid.ItemsSource = _view;
+            AppLog.Info("Приложение запущено, каталог загружен.");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Ошибка при старте", ex);
+            MessageBox.Show("Не удалось загрузить каталог.", "BookDesk", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void RefreshView(IReadOnlyList<Book> items)
@@ -31,11 +35,26 @@ public partial class MainWindow : Window
             _view.Add(book);
     }
 
+    private void ShowUserError(string text)
+    {
+        StatusLabel.Text = text;
+        MessageBox.Show(text, "BookDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
     private void SearchButton_Click(object sender, RoutedEventArgs e)
     {
-        var result = _catalog.Search(SearchBox.Text);
-        RefreshView(result);
-        StatusLabel.Text = $"Найдено: {result.Count}";
+        try
+        {
+            var result = _catalog.Search(SearchBox.Text);
+            RefreshView(result);
+            StatusLabel.Text = $"Найдено: {result.Count}";
+            AppLog.Info($"Поиск '{SearchBox.Text}' -> {result.Count}");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Сбой поиска", ex);
+            ShowUserError("Поиск не выполнен. Проверьте строку запроса.");
+        }
     }
 
     private void ResetButton_Click(object sender, RoutedEventArgs e)
@@ -77,64 +96,122 @@ public partial class MainWindow : Window
 
     private void AddButton_Click(object sender, RoutedEventArgs e)
     {
-        var book = ReadForm(out var parseError);
-        if (parseError != null)
+        try
         {
-            StatusLabel.Text = parseError;
-            return;
-        }
+            var book = ReadForm(out var parseError);
+            if (parseError != null)
+            {
+                ShowUserError(parseError);
+                AppLog.Warn($"Добавление отклонено: {parseError}");
+                return;
+            }
 
-        var error = _catalog.TryAdd(book, PriceBox.Text);
-        if (error != null)
+            var error = _catalog.TryAdd(book, PriceBox.Text);
+            if (error != null)
+            {
+                ShowUserError(error);
+                AppLog.Warn($"Добавление отклонено валидатором: {error}");
+                return;
+            }
+
+            ClearForm();
+            RefreshView(_catalog.Items);
+            StatusLabel.Text = "Добавлено.";
+            AppLog.Info($"Добавлена книга '{book.Title}'");
+        }
+        catch (Exception ex)
         {
-            StatusLabel.Text = error;
-            return;
+            AppLog.Error("Сбой при добавлении", ex);
+            ShowUserError("Не удалось добавить книгу.");
         }
-
-        ClearForm();
-        RefreshView(_catalog.Items);
-        StatusLabel.Text = "Добавлено.";
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
     {
-        if (BooksGrid.SelectedItem is not Book selected)
+        try
         {
-            StatusLabel.Text = "Выберите книгу для изменения.";
-            return;
-        }
+            if (BooksGrid.SelectedItem is not Book selected)
+            {
+                ShowUserError("Выберите книгу для изменения.");
+                return;
+            }
 
-        var edited = ReadForm(out var parseError);
-        if (parseError != null)
+            var edited = ReadForm(out var parseError);
+            if (parseError != null)
+            {
+                ShowUserError(parseError);
+                return;
+            }
+
+            var error = _catalog.TryUpdate(selected, edited, PriceBox.Text);
+            if (error != null)
+            {
+                ShowUserError(error);
+                return;
+            }
+
+            RefreshView(_catalog.Items);
+            StatusLabel.Text = "Изменено.";
+            AppLog.Info($"Изменена книга '{selected.Title}'");
+        }
+        catch (Exception ex)
         {
-            StatusLabel.Text = parseError;
-            return;
+            AppLog.Error("Сбой при изменении", ex);
+            ShowUserError("Не удалось изменить книгу.");
         }
-
-        var error = _catalog.TryUpdate(selected, edited, PriceBox.Text);
-        if (error != null)
-        {
-            StatusLabel.Text = error;
-            return;
-        }
-
-        RefreshView(_catalog.Items);
-        StatusLabel.Text = "Изменено.";
     }
 
     private void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
-        var selected = BooksGrid.SelectedItem as Book;
-        var error = _catalog.TryDelete(selected);
-        if (error != null)
+        try
         {
-            StatusLabel.Text = error;
-            return;
-        }
+            var selected = BooksGrid.SelectedItem as Book;
+            var error = _catalog.TryDelete(selected);
+            if (error != null)
+            {
+                ShowUserError(error);
+                AppLog.Warn($"Удаление отклонено: {error}");
+                return;
+            }
 
-        ClearForm();
-        RefreshView(_catalog.Items);
-        StatusLabel.Text = "Удалено.";
+            ClearForm();
+            RefreshView(_catalog.Items);
+            StatusLabel.Text = "Удалено.";
+            AppLog.Info("Книга удалена");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Сбой при удалении", ex);
+            ShowUserError("Не удалось удалить книгу.");
+        }
+    }
+
+    private void ExportButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // Искусственно опасный путь для проверки обработки IOException
+            var path = Path.Combine("Z:\\bookdesk_no_drive", "catalog.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllLines(path, _catalog.Items.Select(b => $"{b.Title};{b.Genre};{b.Copies};{b.Price}"));
+            StatusLabel.Text = "Каталог сохранён.";
+            AppLog.Info($"Экспорт в {path}");
+        }
+        catch (IOException ex)
+        {
+            AppLog.Error("Ошибка записи каталога", ex);
+            ShowUserError("Не удалось сохранить файл каталога. Проверьте путь и диск.");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            AppLog.Error("Нет доступа к файлу", ex);
+            ShowUserError("Нет прав на запись файла каталога.");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Неожиданная ошибка экспорта", ex);
+            ShowUserError("Сохранение прервано из-за ошибки.");
+        }
     }
 
     private void ClearForm()

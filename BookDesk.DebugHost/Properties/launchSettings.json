@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "BookDesk.DebugHost": {
+      "commandName": "Project"
+    },
+    "AssertFail": {
+      "commandName": "Project",
+      "commandLineArgs": "--assert-fail"
+    }
+  }
+}

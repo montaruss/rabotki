@@ -14,7 +14,7 @@ public static class BookValidator
         if (string.IsNullOrWhiteSpace(book.Genre))
             errors.Add("Укажите жанр.");
 
-        // BUG-01 (дефектная версия): нет проверки Copies < 0
+        // BUG-01: в старой ветке не было проверки Copies < 0
         if (DefectMode.Enabled)
         {
             if (book.Copies > 5000)
@@ -26,7 +26,7 @@ public static class BookValidator
                 errors.Add("Число экземпляров должно быть от 0 до 5000.");
         }
 
-        // BUG-05 (дефектная): пустая цена становится 0 и проходит дальше
+        // BUG-05: пустая цена раньше подставлялась как 0
         var normalized = (priceText ?? string.Empty).Trim().Replace(',', '.');
 
         if (DefectMode.Enabled)
